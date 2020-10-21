@@ -2,7 +2,7 @@ import apriltag
 import numpy as np
 import cv2
 
-# this will be started as a background thread
+# this will  be started as a background thread
 # fiducial / AprilTag / ArUco
 
 # campture from the camera

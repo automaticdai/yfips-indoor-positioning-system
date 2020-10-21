@@ -1,15 +1,21 @@
-# yf-VisionNav
+# yfips-indoor-positioning-system
 
-Traditional localization system is expensive and not friendly to new robot researchers and learners.
 
-In this project, we target to use low cost web cameras to achive (relatively good) positioning which can then be used for navigation propose.
-The system is designed in the mind that it will be used to locate multiple robots (~100) at the same time with a high speed (at least 30fps). 
+## Introduction
+Traditional localization system is not friendly to robot researchers and learners, both (a) they are expensive; (b) they need a lot of efforts to setup.
 
-After configuration and calibration, the system will return the position of the robot in the form of (x, y).
+In this work, we target to use low cost sensors to achive a (relatively good) indoor positioning system (IPS) which can then be used for tracking and navigation proposes.
+
+The system is designed in mind that it will be used to locate multiple robots (1~100) and at the same time with a high speed (at least 30fps). 
+
+After configuration and calibration, the system will return the position of the robot in the form of (id, x, y).
+
+This project has two versions: (1) vision-based; (2) tof/tag-based, which can be used together or seperately.
 
 
 ## Hardware
-You need a webcamera in order to use this code. I suggest a Logitech C920 as this gives the optimal image quality for localization propose but still with a resonable price. 
+### Camera
+You need a webcamera in order to use the vision version of this code. I suggest a Logitech C920 as this gives the optimal image quality for localization propose but still with a resonable price. 
 
 
 ## How to install
@@ -30,7 +36,7 @@ This project is based on [OpenCV 4](https://opencv.org/opencv-4-0/) and [Qt 5](h
 
 ## Contributors
 - [automaticdai](https://github.com/automaticdai)
-- [xu-xinyu-dev](https://github.com/xu-xinyu-dev)
+- [xinyu-xu-dev](https://github.com/xinyu-xu-dev)
 
 
 ## License
