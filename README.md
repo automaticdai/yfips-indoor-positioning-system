@@ -8,6 +8,10 @@ The system is designed in the mind that it will be used to locate multiple robot
 After configuration and calibration, the system will return the position of the robot in the form of (x, y).
 
 
+## Hardware
+You need a webcamera in order to use this code. I suggest a Logitech C920 as this gives the optimal image quality for localization propose but still with a resonable price. 
+
+
 ## How to install
 `virtualenv -p python3 ./venv/`
 
@@ -25,7 +29,8 @@ This project is based on [OpenCV 4](https://opencv.org/opencv-4-0/) and [Qt 5](h
 
 
 ## Contributors
-- automaticdai
+- [automaticdai](https://github.com/automaticdai)
+- [xu-xinyu-dev](https://github.com/xu-xinyu-dev)
 
 
 ## License
