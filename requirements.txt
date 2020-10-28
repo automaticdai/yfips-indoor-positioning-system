@@ -1,4 +1,6 @@
 opencv-python = 4.4.0
 pyqt5
 pyside2
+pyglet
+matplotlib
 apriltags
