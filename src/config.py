@@ -14,7 +14,8 @@ DEFAULTS = {
     "references_dir": None,
     "image_mode": {"min_inliers": 15, "use_flann": False},
     "undistort": True,
-    "tracker": {"enabled": True, "alpha": 0.4, "timeout_s": 1.0},
+    "tracker": {"enabled": True, "type": "ema", "alpha": 0.4, "timeout_s": 1.0,
+                "q_accel": 1.0, "r_pos": 0.05, "r_yaw": 0.1},
     "ros": {"enabled": False, "topic": "/yfips/detections"},
 }
 

@@ -11,6 +11,7 @@ import numpy as np
 import config
 from image_detector import ImageRefDetector
 from ros_publisher import RosPublisher
+from kalman_tracker import KalmanTracker
 from tracker import EMATracker
 
 IMAGE_WIDTH = 640
@@ -125,10 +126,20 @@ def main():
     pub = Publisher(cfg["udp"])
     ros_pub = RosPublisher(cfg.get("ros", {}))
     tracker_cfg = cfg.get("tracker", {})
-    tracker = EMATracker(
-        alpha=float(tracker_cfg.get("alpha", 0.4)),
-        timeout_s=float(tracker_cfg.get("timeout_s", 1.0)),
-    ) if tracker_cfg.get("enabled", True) else None
+    if not tracker_cfg.get("enabled", True):
+        tracker = None
+    elif tracker_cfg.get("type", "ema") == "kalman":
+        tracker = KalmanTracker(
+            q_accel=float(tracker_cfg.get("q_accel", 1.0)),
+            r_pos=float(tracker_cfg.get("r_pos", 0.05)),
+            r_yaw=float(tracker_cfg.get("r_yaw", 0.1)),
+            timeout_s=float(tracker_cfg.get("timeout_s", 1.0)),
+        )
+    else:
+        tracker = EMATracker(
+            alpha=float(tracker_cfg.get("alpha", 0.4)),
+            timeout_s=float(tracker_cfg.get("timeout_s", 1.0)),
+        )
     clicker = CalibClicker(cfg)
     detector = build_detector(mode, cfg)
 

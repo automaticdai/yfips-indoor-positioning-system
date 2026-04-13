@@ -87,7 +87,23 @@ uv run python src/gui.py
 ## 8. Extras in `config.json`
 
 - `undistort` — apply lens undistortion per frame using the calibrated intrinsics (default `true`).
-- `tracker` — per-id EMA smoothing: `{ "enabled": true, "alpha": 0.4, "timeout_s": 1.0 }`.
+- `tracker` — per-id smoothing across frames. Two types:
+  - **EMA** (default, low overhead):
+    ```json
+    "tracker": { "enabled": true, "type": "ema", "alpha": 0.4, "timeout_s": 1.0 }
+    ```
+  - **Kalman** (constant-velocity model on `[x, y, yaw, vx, vy, ω]`; predicts through brief dropouts, wraps yaw residuals):
+    ```json
+    "tracker": {
+      "enabled": true,
+      "type": "kalman",
+      "q_accel": 1.0,
+      "r_pos": 0.05,
+      "r_yaw": 0.1,
+      "timeout_s": 1.0
+    }
+    ```
+    Raise `q_accel` to react faster; raise `r_pos`/`r_yaw` to smooth harder. The filter re-initializes for an id if no measurement arrives within `timeout_s`.
 - `ros` — optional ROS 2 publisher: `{ "enabled": false, "topic": "/yfips/detections" }`. Requires `rclpy`; otherwise gracefully disables itself.
 
 ## 9. Credits
