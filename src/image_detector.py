@@ -12,11 +12,18 @@ import numpy as np
 
 
 class ImageRefDetector:
-    def __init__(self, ref_dir, min_inliers=15, ratio=0.75, max_features=2000):
+    def __init__(self, ref_dir, min_inliers=15, ratio=0.75,
+                 max_features=2000, use_flann=False):
         self.min_inliers = min_inliers
         self.ratio = ratio
         self.orb = cv2.ORB_create(max_features)
-        self.matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
+        if use_flann:
+            index_params = dict(algorithm=6, table_number=12,
+                                key_size=20, multi_probe_level=2)
+            self.matcher = cv2.FlannBasedMatcher(index_params, dict(checks=50))
+            print("[image_detector] using FLANN-LSH matcher")
+        else:
+            self.matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
         self.refs = []  # list of (id, keypoints, descriptors, (w, h))
 
         if not os.path.isdir(ref_dir):

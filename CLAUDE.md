@@ -31,11 +31,14 @@ All state flows through `config.json` (at repo root). Each script in `src/` is r
 - `src/calibration.py` — OpenCV chessboard calibration. Reads `images/calibration_*.jpg` (absolute-path glob; CWD-independent). Writes `camera_matrix` + `dist_coeffs` into `config.json`.
 - `src/detection.py` — main realtime loop.
   - Builds a detector based on `mode` (`apriltag` uses the `apriltag` lib; `image` uses `ImageRefDetector`).
+  - If intrinsics are present and `undistort=true`, precomputes rectify maps (`cv2.initUndistortRectifyMap`) and remaps every frame.
   - Mouse double-click collects 4 world-corner pixels → `cv2.findHomography` → image→world homography, persisted.
-  - Per detection: center + a "forward" image point are mapped through the homography; yaw = `atan2` of the world-frame forward vector.
-  - Publishes `{id, x, y, yaw, t}` JSON over UDP (default `127.0.0.1:9999`).
-- `src/image_detector.py` — `ImageRefDetector`: ORB + BFMatcher + RANSAC homography. Loads references from `references/<id>.{png,jpg}` where the filename stem is the integer robot id. Emits the same `{id, center, forward, corners}` shape as the AprilTag adapter so downstream world-transform code is shared.
-- `src/gui.py` — PySide2 "Hello World" stub; future Qt frontend.
+  - Per detection: center + a "forward" image point are mapped through the homography; yaw = `atan2` of the world-frame forward vector. Smoothed by `EMATracker` per id before publish.
+  - Publishes `{id, x, y, yaw, t}` JSON over UDP (default `127.0.0.1:9999`) and optionally as a ROS 2 string topic.
+- `src/image_detector.py` — `ImageRefDetector`: ORB + BFMatcher/FLANN + RANSAC homography. Loads references from `references/<id>.{png,jpg}` where the filename stem is the integer robot id. Emits the same `{id, center, forward, corners}` shape as the AprilTag adapter so downstream world-transform code is shared. Set `image_mode.use_flann=true` for LSH-based matching at scale.
+- `src/tracker.py` — `EMATracker`: per-id exponential-moving-average smoothing of `(x, y, yaw)`; yaw smoothed via unit vector to handle wrap-around. Disable via `tracker.enabled=false`.
+- `src/ros_publisher.py` — optional ROS 2 publisher (std_msgs/String JSON). No-ops if `rclpy` isn't installed. Enable via `ros.enabled=true`.
+- `src/gui.py` — matplotlib live visualizer; listens to the UDP stream and plots each tracked robot as an arrow on the world plane. Run in a second terminal: `uv run python src/gui.py`.
 
 UDP listener (debug):
 ```bash
@@ -49,5 +52,6 @@ while True: print(s.recvfrom(4096)[0].decode())"
 - `pyside2` wheels don't exist for Python ≥3.11; if `uv sync` fails on PySide2, constrain `requires-python` in `pyproject.toml` or swap to `pyside6`.
 - `detection.py` hardcodes camera index 0 and 640×480@60 fps.
 - Image mode cost scales linearly with number of references; for ≳50 robots swap BFMatcher for FLANN.
-- No live undistortion — intrinsics are saved but not applied before detection. The homography absorbs distortion near the clicked corners only.
-- World positioning assumes robots move on a **plane**; tall tags/robots get parallax error.
+- World positioning assumes robots move on a **plane**; tall tags/robots get parallax error even after undistortion.
+- `ros` mode requires a ROS 2 install (Humble+) with `rclpy` on PYTHONPATH; otherwise it no-ops with a warning.
+- If you click world corners *before* enabling `undistort`, the saved image-corner pixels will be slightly off when undistortion is later turned on — re-click to refresh.

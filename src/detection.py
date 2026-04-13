@@ -10,6 +10,8 @@ import numpy as np
 
 import config
 from image_detector import ImageRefDetector
+from ros_publisher import RosPublisher
+from tracker import EMATracker
 
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 480
@@ -95,9 +97,11 @@ def build_detector(mode, cfg):
     if mode == "image":
         ref_dir = cfg.get("references_dir") or os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references")
+        im_cfg = cfg.get("image_mode", {})
         return ImageRefDetector(
             ref_dir,
-            min_inliers=int(cfg.get("image_mode", {}).get("min_inliers", 15)),
+            min_inliers=int(im_cfg.get("min_inliers", 15)),
+            use_flann=bool(im_cfg.get("use_flann", False)),
         )
     raise ValueError(f"unknown mode: {mode}")
 
@@ -119,8 +123,23 @@ def main():
     print(f"[yfips] mode={mode}")
 
     pub = Publisher(cfg["udp"])
+    ros_pub = RosPublisher(cfg.get("ros", {}))
+    tracker_cfg = cfg.get("tracker", {})
+    tracker = EMATracker(
+        alpha=float(tracker_cfg.get("alpha", 0.4)),
+        timeout_s=float(tracker_cfg.get("timeout_s", 1.0)),
+    ) if tracker_cfg.get("enabled", True) else None
     clicker = CalibClicker(cfg)
     detector = build_detector(mode, cfg)
+
+    undistort_maps = None
+    if cfg.get("undistort", True) and cfg.get("camera_matrix") and cfg.get("dist_coeffs"):
+        K = np.array(cfg["camera_matrix"], dtype=np.float32)
+        D = np.array(cfg["dist_coeffs"], dtype=np.float32)
+        size = (IMAGE_WIDTH, IMAGE_HEIGHT)
+        new_K, _ = cv2.getOptimalNewCameraMatrix(K, D, size, alpha=0.0, newImgSize=size)
+        undistort_maps = cv2.initUndistortRectifyMap(K, D, None, new_K, size, cv2.CV_16SC2)
+        print("[yfips] live undistortion enabled")
 
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, IMAGE_WIDTH)
@@ -135,6 +154,9 @@ def main():
         ret, frame = cap.read()
         if not ret:
             break
+        if undistort_maps is not None:
+            frame = cv2.remap(frame, undistort_maps[0], undistort_maps[1],
+                              cv2.INTER_LINEAR)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         for p in clicker.points:
@@ -153,11 +175,15 @@ def main():
             if clicker.H is not None:
                 x_w, y_w = image_to_world(clicker.H, det["center"])
                 yaw = yaw_from_forward(clicker.H, det["center"], det["forward"])
+                if tracker is not None:
+                    x_w, y_w, yaw = tracker.update(det["id"], x_w, y_w, yaw, now)
                 label = f"id={det['id']} x={x_w:.2f} y={y_w:.2f} yaw={math.degrees(yaw):.0f}"
                 cv2.putText(frame, label, (int(cx) + 6, int(cy)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-                pub.send({"id": det["id"], "x": x_w, "y": y_w,
-                          "yaw": yaw, "t": now})
+                payload = {"id": det["id"], "x": x_w, "y": y_w,
+                           "yaw": yaw, "t": now}
+                pub.send(payload)
+                ros_pub.send(payload)
             else:
                 cv2.putText(frame, f"id={det['id']}", (int(cx) + 6, int(cy)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
@@ -175,6 +201,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
+    ros_pub.shutdown()
 
 
 if __name__ == "__main__":

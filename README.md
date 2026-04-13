@@ -74,12 +74,27 @@ The filename stem must be the integer robot id. Requirements for good detection:
 
 Tunables under `image_mode` in `config.json`:
 - `min_inliers` — RANSAC inlier threshold (default 15). Raise for robustness, lower for faint matches.
+- `use_flann` — use FLANN-LSH instead of brute-force matcher (default `false`). Faster with many references.
 
-## 7. Credits
+## 7. Live visualizer
+
+A second terminal can subscribe to the UDP stream and show each robot as an arrow on the world plane:
+
+```bash
+uv run python src/gui.py
+```
+
+## 8. Extras in `config.json`
+
+- `undistort` — apply lens undistortion per frame using the calibrated intrinsics (default `true`).
+- `tracker` — per-id EMA smoothing: `{ "enabled": true, "alpha": 0.4, "timeout_s": 1.0 }`.
+- `ros` — optional ROS 2 publisher: `{ "enabled": false, "topic": "/yfips/detections" }`. Requires `rclpy`; otherwise gracefully disables itself.
+
+## 9. Credits
 - Built on [OpenCV](https://opencv.org/) and [Qt](https://www.qt.io/) (PySide2).
 - AprilTag detection via the swatbotics binding: https://github.com/swatbotics/apriltag
 
-## 8. Contributors
+## 10. Contributors
 - [automaticdai](https://github.com/automaticdai)
 - [xinyu-xu-dev](https://github.com/xinyu-xu-dev)
 

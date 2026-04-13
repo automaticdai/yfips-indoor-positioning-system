@@ -12,7 +12,10 @@ DEFAULTS = {
     "udp": {"host": "127.0.0.1", "port": 9999, "enabled": True},
     "mode": "apriltag",
     "references_dir": None,
-    "image_mode": {"min_inliers": 15},
+    "image_mode": {"min_inliers": 15, "use_flann": False},
+    "undistort": True,
+    "tracker": {"enabled": True, "alpha": 0.4, "timeout_s": 1.0},
+    "ros": {"enabled": False, "topic": "/yfips/detections"},
 }
 
 
