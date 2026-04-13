@@ -1,144 +1,181 @@
-import numpy as np
-import cv2
-import apriltag
-import matplotlib.pyplot as plt
-import time
+import argparse
 import json
-from PIL import ImageFont, ImageDraw, Image
+import math
+import os
+import socket
+import time
 
-# configurations; will move to a config file
-image_width = 640
-image_height = 480
-window_name = "YFIPS"
+import cv2
+import numpy as np
 
+import config
+from image_detector import ImageRefDetector
 
-def load_config():
-    pass
-
-
-calib_iter = 0
-calib_points = np.array([(0,0), (0,0), (0,0), (0,0)])
-def mouse(event,x,y,flags,param):
-    global calib_iter
-    if event == cv2.EVENT_LBUTTONDBLCLK:
-        print(calib_iter, (x,y))
-        
-        calib_points[calib_iter] = (x,y)
-        calib_iter = calib_iter + 1
-
-        if calib_iter == 4:
-            calib_iter = 0
-            # save parameters to json
-
-        return True
+IMAGE_WIDTH = 640
+IMAGE_HEIGHT = 480
+WINDOW_NAME = "YFIPS"
 
 
-def transform(xy):
-    return (xy[0] / image_width, xy[1] / image_height)
+class Publisher:
+    def __init__(self, udp_cfg):
+        self.enabled = udp_cfg.get("enabled", False)
+        self.addr = (udp_cfg.get("host", "127.0.0.1"), int(udp_cfg.get("port", 9999)))
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if self.enabled else None
+
+    def send(self, payload):
+        if not self.enabled:
+            return
+        self.sock.sendto(json.dumps(payload).encode("utf-8"), self.addr)
 
 
+def compute_homography(image_corners_px, world_corners_m):
+    src = np.array(image_corners_px, dtype=np.float32)
+    dst = np.array(world_corners_m, dtype=np.float32)
+    H, _ = cv2.findHomography(src, dst)
+    return H
 
 
-# This will be started as a background thread
-# Support tags:
-# - fiducial 
-# - AprilTag (ok)
-# - ArUco
-if __name__ == "__main__":
-    # campture from the camera
+def image_to_world(H, pt):
+    p = np.array([pt[0], pt[1], 1.0])
+    w = H @ p
+    return float(w[0] / w[2]), float(w[1] / w[2])
+
+
+class CalibClicker:
+    def __init__(self, cfg):
+        self.cfg = cfg
+        existing = cfg.get("image_corners_px")
+        self.points = list(existing) if existing else []
+        self.H = None
+        if len(self.points) == 4:
+            self.H = compute_homography(self.points, cfg["world_corners_m"])
+
+    def __call__(self, event, x, y, flags, param):
+        if event != cv2.EVENT_LBUTTONDBLCLK:
+            return
+        if len(self.points) >= 4:
+            self.points = []
+            self.H = None
+        self.points.append([x, y])
+        print(f"calib point {len(self.points)}/4: ({x},{y})")
+        if len(self.points) == 4:
+            self.H = compute_homography(self.points, self.cfg["world_corners_m"])
+            self.cfg["image_corners_px"] = self.points
+            config.save(self.cfg)
+            print("Homography computed and saved.")
+
+
+class AprilTagAdapter:
+    """Wraps the apriltag library into the common detection dict shape."""
+
+    def __init__(self):
+        import apriltag  # imported lazily so image-mode users don't need it
+        self.detector = apriltag.Detector()
+
+    def detect(self, gray):
+        out = []
+        for det in self.detector.detect(gray):
+            c = np.asarray(det.corners)
+            # corner0→corner1 defines the tag's local +x
+            forward = 0.5 * (c[1] + c[2])
+            back = 0.5 * (c[0] + c[3])
+            # forward_px should be ahead of center along +x
+            out.append({
+                "id": int(det.tag_id),
+                "center": tuple(det.center),
+                "forward": tuple(forward + (forward - back) * 0.0),  # == forward
+                "corners": c,
+            })
+        return out
+
+
+def build_detector(mode, cfg):
+    if mode == "apriltag":
+        return AprilTagAdapter()
+    if mode == "image":
+        ref_dir = cfg.get("references_dir") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references")
+        return ImageRefDetector(
+            ref_dir,
+            min_inliers=int(cfg.get("image_mode", {}).get("min_inliers", 15)),
+        )
+    raise ValueError(f"unknown mode: {mode}")
+
+
+def yaw_from_forward(H, center_px, forward_px):
+    cw = image_to_world(H, center_px)
+    fw = image_to_world(H, forward_px)
+    return math.atan2(fw[1] - cw[1], fw[0] - cw[0])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["apriltag", "image"], default=None,
+                        help="detection mode; overrides config.mode")
+    args = parser.parse_args()
+
+    cfg = config.load()
+    mode = args.mode or cfg.get("mode", "apriltag")
+    print(f"[yfips] mode={mode}")
+
+    pub = Publisher(cfg["udp"])
+    clicker = CalibClicker(cfg)
+    detector = build_detector(mode, cfg)
+
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, IMAGE_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, IMAGE_HEIGHT)
+    cap.set(cv2.CAP_PROP_FPS, 60)
 
-    # set camera properties
-    # 0. CV_CAP_PROP_POS_MSEC Current position of the video file in milliseconds.
-    # 1. CV_CAP_PROP_POS_FRAMES 0-based index of the frame to be decoded/captured next.
-    # 2. CV_CAP_PROP_POS_AVI_RATIO Relative position of the video file
-    # 3. CV_CAP_PROP_FRAME_WIDTH Width of the frames in the video stream.
-    # 4. CV_CAP_PROP_FRAME_HEIGHT Height of the frames in the video stream.
-    # 5. CV_CAP_PROP_FPS Frame rate.
-    # 6. CV_CAP_PROP_FOURCC 4-character code of codec.
-    # 7. CV_CAP_PROP_FRAME_COUNT Number of frames in the video file.
-    # 8. CV_CAP_PROP_FORMAT Format of the Mat objects returned by retrieve() .
-    # 9. CV_CAP_PROP_MODE Backend-specific value indicating the current capture mode.
-    # 10. CV_CAP_PROP_BRIGHTNESS Brightness of the image (only for cameras).
-    # 11. CV_CAP_PROP_CONTRAST Contrast of the image (only for cameras).
-    # 12. CV_CAP_PROP_SATURATION Saturation of the image (only for cameras).
-    # 13. CV_CAP_PROP_HUE Hue of the image (only for cameras).
-    # 14. CV_CAP_PROP_GAIN Gain of the image (only for cameras).
-    # 15. CV_CAP_PROP_EXPOSURE Exposure (only for cameras).
-    # 16. CV_CAP_PROP_CONVERT_RGB Boolean flags indicating whether images should be converted to RGB.
-    # 17. CV_CAP_PROP_WHITE_BALANCE Currently unsupported
-    # 18. CV_CAP_PROP_RECTIFICATION Rectification flag for stereo cameras (note: only supported by DC1394 v 2.x backend currently)
-    cap.set(3, image_width)
-    cap.set(4, image_height)
-    cap.set(5, 60)
+    cv2.namedWindow(WINDOW_NAME)
+    cv2.setMouseCallback(WINDOW_NAME, clicker)
 
-    cv2.namedWindow(window_name)
-    cv2.setMouseCallback(window_name, mouse)
-
-    while(True):
-        # get current time which is used for calculating FPS
+    while True:
         now = time.time()
-
-        # Capture frame-by-frame
         ret, frame = cap.read()
-        img = frame
+        if not ret:
+            break
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # convert into gray scale image
-        img_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        for p in clicker.points:
+            cv2.circle(frame, (int(p[0]), int(p[1])), 4, (255, 0, 0), -1)
 
-        # show the world corner points
-        for point in calib_points:
-            cv2.circle(img, (round(point[0]), round(point[1])), 3, (255, 0, 0), -1)
+        detections = detector.detect(gray)
+        for det in detections:
+            cx, cy = det["center"]
+            for cn in det["corners"]:
+                cv2.circle(frame, (int(cn[0]), int(cn[1])), 3, (0, 0, 255), -1)
+            cv2.circle(frame, (int(cx), int(cy)), 4, (0, 255, 0), -1)
+            fx_, fy_ = det["forward"]
+            cv2.arrowedLine(frame, (int(cx), int(cy)), (int(fx_), int(fy_)),
+                            (0, 255, 255), 1, tipLength=0.3)
 
-        # detect the apriltag
-        detector = apriltag.Detector()
-        result = detector.detect(img_gray)
+            if clicker.H is not None:
+                x_w, y_w = image_to_world(clicker.H, det["center"])
+                yaw = yaw_from_forward(clicker.H, det["center"], det["forward"])
+                label = f"id={det['id']} x={x_w:.2f} y={y_w:.2f} yaw={math.degrees(yaw):.0f}"
+                cv2.putText(frame, label, (int(cx) + 6, int(cy)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                pub.send({"id": det["id"], "x": x_w, "y": y_w,
+                          "yaw": yaw, "t": now})
+            else:
+                cv2.putText(frame, f"id={det['id']}", (int(cx) + 6, int(cy)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
-        if result:
-            cx = result[0].center[0]
-            cy = result[0].center[1]
+        fps = 1.0 / max(time.time() - now, 1e-6)
+        cv2.putText(frame, f"{mode} | fps: {fps:.1f}",
+                    (0, IMAGE_HEIGHT - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
+        if clicker.H is None:
+            cv2.putText(frame, "double-click 4 corners in world_corners_m order",
+                        (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255))
 
-            corners = result[0].corners
-
-            for corner in corners:
-                cv2.circle(img, (round(corner[0]), round(corner[1])), 3, (0, 0, 255), -1)
-
-            cv2.circle(img, (round(cx), round(cy)), 3, (0, 0, 255), -1)
-    
-            print(transform(result[0].center))
-
-            # direction estimation
-
-
-            # pose estimation
-
-
-            # display the result in matplotlib
-            plt.clf()
-            plt.plot(cx, cy, 'ro')
-            for corner in corners:
-                plt.plot(round(corner[0]), round(corner[1]), 'go')
-            for point in calib_points:
-                plt.plot(round(point[0]), round(point[1]), 'bo')
-            plt.xlim(0, image_width)
-            plt.ylim(0, image_height)
-            plt.pause(0.10)
-            plt.show(block=False)
-
-            #print(result[0].corners)
-            #print(result[0].homography)
-
-        # show FPS on the bottom of the screen
-        fps = round(1.0 / (time.time() - now), 1)
-        cv2.putText(img, "fps: {:.1f}".format(fps), (0, image_height - 10), 0, 0.4, (0,0,255))
-
-        # Display the result frame
-        cv2.imshow(window_name, img)
-
-        # Press 'ESC' to quit:
+        cv2.imshow(WINDOW_NAME, frame)
         if cv2.waitKey(1) & 0xFF == 27:
             break
 
-    # When everything done, release the capture
     cap.release()
     cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()

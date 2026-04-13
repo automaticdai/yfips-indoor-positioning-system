@@ -2,73 +2,86 @@
 ![](https://img.shields.io/github/stars/yfrobotics/yfips-indoor-positioning-system) ![](https://img.shields.io/github/issues/yfrobotics/yfips-indoor-positioning-system) ![](https://img.shields.io/github/license/yfrobotics/yfips-indoor-positioning-system)
 
 ## 1. Introduction
-Traditional localisation system is not friendly to robot researchers and learners, both (a) they are expensive; (b) they need a lot of efforts to setup. In this project, we target to use low cost sensors to achieve an indoor positioning system (IPS) which has relatively good performance and can also be used for tracking and navigation proposes beyond robotic applications.
+Traditional localisation systems are unfriendly to robot researchers and learners: they're expensive and take a lot of effort to set up. YF-IPS targets a low-cost indoor positioning system (IPS) with reasonable accuracy, usable for tracking and navigation beyond robotics as well.
 
-The system is designed in mind that it will be used to locate multiple robots (1~100) and at the same time with a high speed (at least 30 fps). After configuration and calibration, the system will return the position of the robot in the form of (id, x, y, yaw), in which id is the robot identification number, (x, y) is the 2D coordination relative to the origin point, yaw is the rotation on the z axis.
+The system is designed to locate 1–100 robots at ≥10 fps over a 5×5 m area, returning `(id, x, y, yaw)` — where `id` is the robot identifier, `(x, y)` is the 2D position relative to a world origin (in metres), and `yaw` is the rotation about z (in radians).
 
-This project has two versions: (1) vision-based; (2) ToF/tag-based, which can be used together or separately. The project is currently in its very early stage. We want to explore which technology / combination of technologies could produce satisfactory precision with affordable cost. We are working on vision-based and tag-based and are evaluating if these are sufficient. 
+Two planned variants exist: vision-based and ToF/tag-based, usable together or separately. This repo currently implements the **vision** variant, with two selectable detection modes:
 
+1. **AprilTag mode** — robots carry an AprilTag fiducial; detection uses the [swatbotics AprilTag](https://github.com/swatbotics/apriltag) binding.
+2. **Reference-image mode** — no fiducials; each robot is localized by matching an overhead reference image against the live scene using ORB features + RANSAC homography.
 
 ## 2. Design specification
-These are the objectives of this project. 
+- Detect robots in a 5×5 m region.
+- Simplest setup: ±20 cm precision. More sensors can improve to ±10 cm.
+- 1–10 robots simultaneously at ≥10 fps.
+- Output publishable as UDP JSON (implemented) or a ROS topic (planned).
 
-- The system can detect robots in a region of 5 x 5 meters.
-- The precision with the simpliest setup has +-20 cm. Using more sensors could improve the precision up to +-10 cm.
-- The system can simulatenously detect 1-10 robots with at least 10 fps.
-- The system can send the output through UDP/IP or as a ROS topic.
+## 3. Hardware
+- **PC** (desktop or laptop) to run the program.
+- **Webcam** — an HD (1080p) camera is recommended. A Logitech C920/C922 gives a good quality/cost tradeoff.
+- **AprilTag printouts** — for AprilTag mode.
+- **Reference images** — for image mode (top-down crops of each robot, one file per id).
+- Wireless anchors/tags — TBD (ToF variant not yet implemented).
 
+## 4. Install and run
 
-## 3. Hardware Requirements
-### 3.1 PC
-A PC (Desktop/Laptop) is needed to run the program.
+Uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
-### 3.2 Camera
-You need a high-resolution HD (1080p) web camera  in order to use the vision version of this code. I suggest a Logitech C920/C922 as this gives the optimal image quality for localisation propose but still with a affordable price. 
+```bash
+uv sync                                        # create .venv and install deps
+uv run python src/calibration.py               # one-time camera calibration
+uv run python src/detection.py --mode apriltag # or --mode image
+```
 
-### 3.3 Vision Tags
-TBD.
+Mode can also be set permanently via `"mode": "apriltag" | "image"` in `config.json`.
 
-### 3.4 Wireless Anchors
-TBD.
+### UDP output
+Detections are published as JSON datagrams `{"id", "x", "y", "yaw", "t"}` to `127.0.0.1:9999` by default (configurable under `udp` in `config.json`). Quick listener:
 
-### 3.5 Wireless Tags
-TBD.
-
-
-## 4. How to install and run
-(1) Set a virtual environment: 
-
-`virtualenv -p python3 venv/`
-
-`source venv/bin/activate`
-
-(2) Upgrade PIP:
-
-`pip3 install --upgrade pip`
-
-(3) Install the requirements:
-
-`sudo pip3 install requirements.txt`
-
+```bash
+python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('127.0.0.1',9999))
+while True: print(s.recvfrom(4096)[0].decode())"
+```
 
 ## 5. Calibration
+
 ### 5.1 Camera calibration
-To estimate tag pose, you need to know the `intrinsic camera parameters`, which can be estimated using the `calibrate_camera.py` script.
-You also need to know the `tag size` in order to scale the estimated translation vectors correctly.
+Capture ~15 images of a 7×6-inner-corner chessboard and save them as `images/calibration_*.jpg`. Run `src/calibration.py` — it writes the camera matrix and distortion coefficients into `config.json`.
 
 ### 5.2 Environment calibration
-You need to calibrate the environment by giving the four corner points and their distance. You also need to assign the origin point (0,0).
+Run `src/detection.py` and **double-click the 4 world corners** of your playing area inside the video window, in the same order as `world_corners_m` in `config.json` (default: `(0,0), (5,0), (5,5), (0,5)` metres). The image→world homography is computed and persisted; subsequent runs reuse it. A 5th click resets and re-captures.
 
+## 6. Detection modes
 
-## 6. Credits
-- This project is built using [OpenCV 4](https://opencv.org/opencv-4-0/) and [Qt 5](https://www.qt.io/). 
-- The Apriltag detection and pose estimation are based on: https://github.com/swatbotics/apriltag
+### 6.1 AprilTag mode (default)
+Print AprilTags (any supported family), mount one per robot with the tag id corresponding to the robot id. Set `tag_size_m` in `config.json` to the printed tag's side length in metres.
 
+### 6.2 Reference-image mode
+Create a `references/` directory at the repo root and drop one image per robot:
 
-## 7. Contributors
+```
+references/
+  1.png     # top-down image of robot with id=1
+  2.png
+  7.jpg
+```
+
+The filename stem must be the integer robot id. Requirements for good detection:
+- Planar, textured top-down view of the robot (the feature matcher assumes a plane).
+- Enough texture — flat colours or reflective surfaces produce few ORB features.
+- Ideally the same approximate scale as the robot will appear in the scene.
+
+Tunables under `image_mode` in `config.json`:
+- `min_inliers` — RANSAC inlier threshold (default 15). Raise for robustness, lower for faint matches.
+
+## 7. Credits
+- Built on [OpenCV](https://opencv.org/) and [Qt](https://www.qt.io/) (PySide2).
+- AprilTag detection via the swatbotics binding: https://github.com/swatbotics/apriltag
+
+## 8. Contributors
 - [automaticdai](https://github.com/automaticdai)
 - [xinyu-xu-dev](https://github.com/xinyu-xu-dev)
-
 
 ## License
 MIT

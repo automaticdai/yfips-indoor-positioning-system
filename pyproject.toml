@@ -1,0 +1,13 @@
+[project]
+name = "yfips"
+version = "0.1.0"
+description = "YF-IPS: low-cost indoor positioning system (vision + AprilTag)"
+requires-python = ">=3.9"
+dependencies = [
+    "opencv-python>=4.8",
+    "numpy",
+    "matplotlib",
+    "pyglet",
+    "pyside2",
+    "apriltag",
+]
