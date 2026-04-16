@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 
-from yfips.image_detector import ImageRefDetector
+from yfips.image_detector import ImageRefDetector, _dedup_by_id
 
 
 def _textured(seed, size=(160, 160)):
@@ -52,6 +52,27 @@ def test_detector_returns_empty_on_blank_scene(tmp_path):
     assert detector.detect(blank) == []
 
 
+def test_dedup_by_id_keeps_highest_inliers():
+    a = {"id": 7, "inliers": 20, "center": (0, 0)}
+    b = {"id": 7, "inliers": 30, "center": (5, 5)}
+    c = {"id": 8, "inliers": 25, "center": (1, 1)}
+    out = _dedup_by_id([a, b, c])
+    by_id = {d["id"]: d for d in out}
+    assert set(by_id) == {7, 8}
+    assert by_id[7]["inliers"] == 30
+    assert by_id[7]["center"] == (5, 5)
+
+
+def test_dedup_by_id_preserves_singletons():
+    inputs = [{"id": 1, "inliers": 5}, {"id": 2, "inliers": 7}]
+    out = _dedup_by_id(inputs)
+    assert {d["id"] for d in out} == {1, 2}
+
+
+def test_dedup_by_id_empty():
+    assert _dedup_by_id([]) == []
+
+
 def test_detector_emits_expected_dict_shape(tmp_path):
     ref = _textured(seed=4)
     cv2.imwrite(str(tmp_path / "5.png"), ref)
@@ -61,7 +82,8 @@ def test_detector_emits_expected_dict_shape(tmp_path):
 
     assert detections, "ref should match in scene"
     det = detections[0]
-    assert set(det.keys()) == {"id", "center", "forward", "corners"}
+    assert set(det.keys()) == {"id", "center", "forward", "corners", "inliers"}
     assert det["corners"].shape == (4, 2)
     assert len(det["center"]) == 2
     assert len(det["forward"]) == 2
+    assert det["inliers"] >= 5

@@ -16,6 +16,17 @@ import cv2
 import numpy as np
 
 
+def _dedup_by_id(results):
+    """Collapse duplicate-id detections to the one with the most inliers.
+    Order is not preserved."""
+    best = {}
+    for det in results:
+        prev = best.get(det["id"])
+        if prev is None or det.get("inliers", 0) > prev.get("inliers", 0):
+            best[det["id"]] = det
+    return list(best.values())
+
+
 class ImageRefDetector:
     def __init__(self, ref_dir, min_inliers=15, ratio=0.75,
                  max_features=2000, use_flann=False):
@@ -77,7 +88,8 @@ class ImageRefDetector:
             src = np.float32([kp1[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
             dst = np.float32([kp2[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
             H, mask = cv2.findHomography(src, dst, cv2.RANSAC, 5.0)
-            if H is None or int(mask.sum()) < self.min_inliers:
+            inliers = int(mask.sum()) if mask is not None else 0
+            if H is None or inliers < self.min_inliers:
                 continue
 
             pts_ref = np.array([[[w / 2, h / 2]], [[w, h / 2]]], dtype=np.float32)
@@ -94,5 +106,6 @@ class ImageRefDetector:
                 "center": center,
                 "forward": forward,
                 "corners": corners_scene,
+                "inliers": inliers,
             })
-        return results
+        return _dedup_by_id(results)
