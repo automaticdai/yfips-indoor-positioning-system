@@ -9,7 +9,6 @@ DEFAULTS = {
     "dist_coeffs": None,
     "world_corners_m": [[0.0, 0.0], [5.0, 0.0], [5.0, 5.0], [0.0, 5.0]],
     "image_corners_px": None,
-    "tag_size_m": 0.10,
     "udp": {"host": "127.0.0.1", "port": 9999, "enabled": True},
     "mode": "apriltag",
     "references_dir": None,

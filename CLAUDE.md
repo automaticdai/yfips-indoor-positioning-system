@@ -27,7 +27,7 @@ Inside the window: double-click 4 world corners in the order of `world_corners_m
 
 All state flows through `config.json` (at repo root). Source lives under `src/yfips/` as an installable package — run modules with `python -m yfips.<name>`.
 
-- `src/yfips/config.py` — load/save `config.json`. Holds camera intrinsics, distortion, world/image corners, tag size, UDP settings, mode, references dir.
+- `src/yfips/config.py` — load/save `config.json`. Holds camera intrinsics, distortion, world/image corners, UDP settings, mode, references dir.
 - `src/yfips/calibration.py` — OpenCV chessboard calibration. Reads `images/calibration_*.jpg` (absolute-path glob; CWD-independent). Writes `camera_matrix` + `dist_coeffs` into `config.json`.
 - `src/yfips/detection.py` — main realtime loop.
   - Builds a detector based on `mode` (`apriltag` uses the `apriltag` lib; `image` uses `ImageRefDetector`).
