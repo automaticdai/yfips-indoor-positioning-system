@@ -1,7 +1,8 @@
 import json
 import os
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.json")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CONFIG_PATH = os.path.join(_REPO_ROOT, "config.json")
 
 DEFAULTS = {
     "camera_matrix": None,
@@ -23,7 +24,7 @@ DEFAULTS = {
 def load():
     if not os.path.exists(CONFIG_PATH):
         return dict(DEFAULTS)
-    with open(CONFIG_PATH, "r") as f:
+    with open(CONFIG_PATH) as f:
         cfg = json.load(f)
     merged = dict(DEFAULTS)
     merged.update(cfg)

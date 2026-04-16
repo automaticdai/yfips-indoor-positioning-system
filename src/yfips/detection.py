@@ -8,11 +8,11 @@ import time
 import cv2
 import numpy as np
 
-import config
-from image_detector import ImageRefDetector
-from ros_publisher import RosPublisher
-from kalman_tracker import KalmanTracker
-from tracker import EMATracker
+from yfips import config
+from yfips.image_detector import ImageRefDetector
+from yfips.kalman_tracker import KalmanTracker
+from yfips.ros_publisher import RosPublisher
+from yfips.tracker import EMATracker
 
 IMAGE_WIDTH = 640
 IMAGE_HEIGHT = 480
@@ -97,7 +97,8 @@ def build_detector(mode, cfg):
         return AprilTagAdapter()
     if mode == "image":
         ref_dir = cfg.get("references_dir") or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "references")
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "references")
         im_cfg = cfg.get("image_mode", {})
         return ImageRefDetector(
             ref_dir,

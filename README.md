@@ -29,9 +29,9 @@ Two planned variants exist: vision-based and ToF/tag-based, usable together or s
 Uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
 ```bash
-uv sync                                        # create .venv and install deps
-uv run python src/calibration.py               # one-time camera calibration
-uv run python src/detection.py --mode apriltag # or --mode image
+uv sync                                            # create .venv and install deps
+uv run python -m yfips.calibration                 # one-time camera calibration
+uv run python -m yfips.detection --mode apriltag   # or --mode image
 ```
 
 Mode can also be set permanently via `"mode": "apriltag" | "image"` in `config.json`.
@@ -47,10 +47,10 @@ while True: print(s.recvfrom(4096)[0].decode())"
 ## 5. Calibration
 
 ### 5.1 Camera calibration
-Capture ~15 images of a 7×6-inner-corner chessboard and save them as `images/calibration_*.jpg`. Run `src/calibration.py` — it writes the camera matrix and distortion coefficients into `config.json`.
+Capture ~15 images of a 7×6-inner-corner chessboard and save them as `images/calibration_*.jpg`. Run `uv run python -m yfips.calibration` — it writes the camera matrix and distortion coefficients into `config.json`.
 
 ### 5.2 Environment calibration
-Run `src/detection.py` and **double-click the 4 world corners** of your playing area inside the video window, in the same order as `world_corners_m` in `config.json` (default: `(0,0), (5,0), (5,5), (0,5)` metres). The image→world homography is computed and persisted; subsequent runs reuse it. A 5th click resets and re-captures.
+Run `uv run python -m yfips.detection` and **double-click the 4 world corners** of your playing area inside the video window, in the same order as `world_corners_m` in `config.json` (default: `(0,0), (5,0), (5,5), (0,5)` metres). The image→world homography is computed and persisted; subsequent runs reuse it. A 5th click resets and re-captures.
 
 ## 6. Detection modes
 
@@ -81,7 +81,7 @@ Tunables under `image_mode` in `config.json`:
 A second terminal can subscribe to the UDP stream and show each robot as an arrow on the world plane:
 
 ```bash
-uv run python src/gui.py
+uv run python -m yfips.gui
 ```
 
 ## 8. Extras in `config.json`

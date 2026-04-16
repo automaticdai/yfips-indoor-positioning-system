@@ -10,7 +10,7 @@ import time
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 
-import config
+from yfips import config
 
 
 class UDPListener(threading.Thread):

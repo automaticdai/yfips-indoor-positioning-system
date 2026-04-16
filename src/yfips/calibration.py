@@ -4,7 +4,7 @@ import os
 import cv2 as cv
 import numpy as np
 
-import config
+from yfips import config
 
 criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -14,7 +14,7 @@ objp[:, :2] = np.mgrid[0:7, 0:6].T.reshape(-1, 2)
 objpoints = []
 imgpoints = []
 
-repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 images = glob.glob(os.path.join(repo_root, "images", "calibration_*.jpg"))
 
 if not images:
