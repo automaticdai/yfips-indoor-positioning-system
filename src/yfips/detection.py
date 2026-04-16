@@ -114,6 +114,21 @@ def yaw_from_forward(H, center_px, forward_px):
     return math.atan2(fw[1] - cw[1], fw[0] - cw[0])
 
 
+def emit_predictions(tracker, detected_ids, t):
+    """Yield (rid, x, y, yaw) for tracked ids absent this frame whose
+    tracker can extrapolate. Trackers without a velocity model (EMA)
+    silently produce nothing."""
+    if tracker is None:
+        return
+    for rid in tracker.ids():
+        if rid in detected_ids:
+            continue
+        out = tracker.predict_only(rid, t)
+        if out is None:
+            continue
+        yield (rid, *out)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["apriltag", "image"], default=None,
@@ -175,6 +190,7 @@ def main():
             cv2.circle(frame, (int(p[0]), int(p[1])), 4, (255, 0, 0), -1)
 
         detections = detector.detect(gray)
+        detected_ids = set()
         for det in detections:
             cx, cy = det["center"]
             for cn in det["corners"]:
@@ -189,6 +205,7 @@ def main():
                 yaw = yaw_from_forward(clicker.H, det["center"], det["forward"])
                 if tracker is not None:
                     x_w, y_w, yaw = tracker.update(det["id"], x_w, y_w, yaw, now)
+                detected_ids.add(det["id"])
                 label = f"id={det['id']} x={x_w:.2f} y={y_w:.2f} yaw={math.degrees(yaw):.0f}"
                 cv2.putText(frame, label, (int(cx) + 6, int(cy)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
@@ -199,6 +216,13 @@ def main():
             else:
                 cv2.putText(frame, f"id={det['id']}", (int(cx) + 6, int(cy)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+
+        if clicker.H is not None:
+            for rid, x_w, y_w, yaw in emit_predictions(tracker, detected_ids, now):
+                payload = {"id": rid, "x": x_w, "y": y_w,
+                           "yaw": yaw, "t": now, "predicted": True}
+                pub.send(payload)
+                ros_pub.send(payload)
 
         fps = 1.0 / max(time.time() - now, 1e-6)
         cv2.putText(frame, f"{mode} | fps: {fps:.1f}",

@@ -27,3 +27,10 @@ class EMATracker:
             )
         sx, sy_, scy, ssy, _ = self.state[rid]
         return sx, sy_, math.atan2(ssy, scy)
+
+    def ids(self):
+        return list(self.state.keys())
+
+    def predict_only(self, rid, t):
+        # EMA has no velocity model; nothing to extrapolate.
+        return None

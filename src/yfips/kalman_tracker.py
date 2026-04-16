@@ -72,3 +72,18 @@ class KalmanTracker:
             f.predict(t)
             f.update(x, y, yaw)
         return float(f.x[0]), float(f.x[1]), float(f.x[2])
+
+    def ids(self):
+        return list(self.filters.keys())
+
+    def predict_only(self, rid, t):
+        """Advance a tracked id's state to time t without ingesting a measurement.
+
+        Returns (x, y, yaw) or None if the id is unknown or has timed out.
+        Each call advances the filter's internal time, so subsequent
+        measurements use a small dt (correct under the constant-velocity model)."""
+        f = self.filters.get(rid)
+        if f is None or (t - f.t) > self.timeout_s:
+            return None
+        f.predict(t)
+        return float(f.x[0]), float(f.x[1]), float(f.x[2])

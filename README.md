@@ -104,6 +104,8 @@ uv run python -m yfips.gui
     }
     ```
     Raise `q_accel` to react faster; raise `r_pos`/`r_yaw` to smooth harder. The filter re-initializes for an id if no measurement arrives within `timeout_s`.
+
+    On frames where a tracked id is missing (briefly occluded, missed match), the Kalman tracker emits a UDP/ROS payload with `"predicted": true` derived from the constant-velocity model. EMA cannot extrapolate and stays silent on dropouts.
 - `ros` — optional ROS 2 publisher: `{ "enabled": false, "topic": "/yfips/detections" }`. Requires `rclpy`; otherwise gracefully disables itself.
 
 ## 9. Credits
