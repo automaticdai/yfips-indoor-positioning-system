@@ -1,15 +1,18 @@
 """Optional ROS 2 publisher. No-op if rclpy is not installed."""
 
+from __future__ import annotations
+
 import json
+from typing import Any
 
 
 class RosPublisher:
-    def __init__(self, ros_cfg):
+    def __init__(self, ros_cfg: dict[str, Any]) -> None:
         self.enabled = bool(ros_cfg.get("enabled", False))
         self.topic = ros_cfg.get("topic", "/yfips/detections")
-        self.node = None
-        self.pub = None
-        self._rclpy = None
+        self.node: Any = None
+        self.pub: Any = None
+        self._rclpy: Any = None
         if not self.enabled:
             return
         try:
@@ -28,14 +31,14 @@ class RosPublisher:
         self._String = String
         print(f"[ros] publishing to {self.topic}")
 
-    def send(self, payload):
+    def send(self, payload: dict[str, Any]) -> None:
         if not self.enabled or self.pub is None:
             return
         msg = self._String()
         msg.data = json.dumps(payload)
         self.pub.publish(msg)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         if self.node is not None:
             self.node.destroy_node()
         if self._rclpy is not None:

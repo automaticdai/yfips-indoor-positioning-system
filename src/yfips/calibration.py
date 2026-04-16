@@ -5,8 +5,11 @@ corner finder + calibrateCamera, and writes the intrinsics into
 config.json.
 """
 
+from __future__ import annotations
+
 import glob
 import os
+from typing import Any
 
 import cv2 as cv
 import numpy as np
@@ -20,14 +23,14 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 _IMAGES_GLOB = os.path.join(_REPO_ROOT, "images", "calibration_*.jpg")
 
 
-def _make_object_points():
+def _make_object_points() -> np.ndarray:
     cols, rows = CHESSBOARD
     pts = np.zeros((rows * cols, 3), np.float32)
     pts[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2)
     return pts
 
 
-def apply_intrinsics(cfg, mtx, dist):
+def apply_intrinsics(cfg: dict[str, Any], mtx: Any, dist: Any) -> dict[str, Any]:
     """Update cfg in place with new intrinsics, dropping any image_corners_px
     that were collected under the previous calibration. The previously
     saved homography no longer matches the rectified image, so the user
@@ -41,7 +44,7 @@ def apply_intrinsics(cfg, mtx, dist):
     return cfg
 
 
-def main():
+def main() -> None:
     images = glob.glob(_IMAGES_GLOB)
     if not images:
         raise SystemExit(f"No calibration images found at {_IMAGES_GLOB}")

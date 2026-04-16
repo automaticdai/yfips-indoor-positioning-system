@@ -5,17 +5,20 @@ Measurement:  [x, y, yaw]^T (yaw residual is wrapped to [-pi, pi])
 Process model: constant velocity, Gaussian acceleration noise.
 """
 
+from __future__ import annotations
+
 import math
 
 import numpy as np
 
 
-def _wrap(a):
+def _wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
 class _Filter:
-    def __init__(self, x, y, yaw, t, q_accel, r_pos, r_yaw):
+    def __init__(self, x: float, y: float, yaw: float, t: float,
+                 q_accel: float, r_pos: float, r_yaw: float) -> None:
         self.x = np.array([x, y, yaw, 0.0, 0.0, 0.0])
         self.P = np.diag([0.1, 0.1, 0.1, 1.0, 1.0, 1.0])
         self.t = t
@@ -24,7 +27,7 @@ class _Filter:
         self.H[0, 0] = self.H[1, 1] = self.H[2, 2] = 1.0
         self.R = np.diag([r_pos ** 2, r_pos ** 2, r_yaw ** 2])
 
-    def _F_Q(self, dt):
+    def _F_Q(self, dt: float) -> tuple[np.ndarray, np.ndarray]:
         F = np.eye(6)
         F[0, 3] = F[1, 4] = F[2, 5] = dt
         q = self.q_accel ** 2
@@ -36,7 +39,7 @@ class _Filter:
             Q[np.ix_([i, i + 3], [i, i + 3])] = block
         return F, Q
 
-    def predict(self, t):
+    def predict(self, t: float) -> None:
         dt = max(t - self.t, 1e-3)
         F, Q = self._F_Q(dt)
         self.x = F @ self.x
@@ -44,7 +47,7 @@ class _Filter:
         self.P = F @ self.P @ F.T + Q
         self.t = t
 
-    def update(self, zx, zy, zyaw):
+    def update(self, zx: float, zy: float, zyaw: float) -> None:
         z = np.array([zx, zy, zyaw])
         y = z - self.H @ self.x
         y[2] = _wrap(y[2])
@@ -56,14 +59,16 @@ class _Filter:
 
 
 class KalmanTracker:
-    def __init__(self, q_accel=1.0, r_pos=0.05, r_yaw=0.1, timeout_s=1.0):
+    def __init__(self, q_accel: float = 1.0, r_pos: float = 0.05,
+                 r_yaw: float = 0.1, timeout_s: float = 1.0) -> None:
         self.q_accel = q_accel
         self.r_pos = r_pos
         self.r_yaw = r_yaw
         self.timeout_s = timeout_s
-        self.filters = {}  # id -> _Filter
+        self.filters: dict[int, _Filter] = {}
 
-    def update(self, rid, x, y, yaw, t):
+    def update(self, rid: int, x: float, y: float, yaw: float, t: float
+               ) -> tuple[float, float, float]:
         f = self.filters.get(rid)
         if f is None or (t - f.t) > self.timeout_s:
             f = _Filter(x, y, yaw, t, self.q_accel, self.r_pos, self.r_yaw)
@@ -73,10 +78,10 @@ class KalmanTracker:
             f.update(x, y, yaw)
         return float(f.x[0]), float(f.x[1]), float(f.x[2])
 
-    def ids(self):
+    def ids(self) -> list[int]:
         return list(self.filters.keys())
 
-    def predict_only(self, rid, t):
+    def predict_only(self, rid: int, t: float) -> tuple[float, float, float] | None:
         """Advance a tracked id's state to time t without ingesting a measurement.
 
         Returns (x, y, yaw) or None if the id is unknown or has timed out.

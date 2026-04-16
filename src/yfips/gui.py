@@ -1,6 +1,8 @@
 """Live 2D visualizer: listens to the UDP detection stream and plots
 each robot's current (x, y, yaw) on the world plane."""
 
+from __future__ import annotations
+
 import json
 import math
 import socket
@@ -14,17 +16,17 @@ from yfips import config
 
 
 class UDPListener(threading.Thread):
-    def __init__(self, host, port, timeout_s=1.0):
+    def __init__(self, host: str, port: int, timeout_s: float = 1.0) -> None:
         super().__init__(daemon=True)
         self.timeout_s = timeout_s
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((host, port))
         self.sock.settimeout(0.2)
-        self.state = {}  # id -> (x, y, yaw, t)
+        self.state: dict[int, tuple[float, float, float, float]] = {}
         self.lock = threading.Lock()
         self.running = True
 
-    def run(self):
+    def run(self) -> None:
         while self.running:
             try:
                 data, _ = self.sock.recvfrom(4096)
@@ -39,14 +41,14 @@ class UDPListener(threading.Thread):
             except (ValueError, KeyError):
                 continue
 
-    def snapshot(self):
+    def snapshot(self) -> dict[int, tuple[float, float, float, float]]:
         now = time.time()
         with self.lock:
             return {rid: v for rid, v in self.state.items()
                     if (now - v[3]) <= self.timeout_s}
 
 
-def main():
+def main() -> None:
     cfg = config.load()
     udp = cfg["udp"]
     listener = UDPListener(udp["host"], int(udp["port"]))

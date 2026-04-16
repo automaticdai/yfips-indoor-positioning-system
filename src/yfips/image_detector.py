@@ -9,16 +9,19 @@ the scene against pre-trained matchers avoids rebuilding a FLANN-LSH
 index every frame, which was the dominant cost when scaling past a few
 references."""
 
+from __future__ import annotations
+
 import glob
 import json
 import math
 import os
+from typing import Any
 
 import cv2
 import numpy as np
 
 
-def forward_point_in_ref(w, h, forward_deg):
+def forward_point_in_ref(w: int, h: int, forward_deg: float) -> tuple[float, float]:
     """Return the (x, y) pixel in reference image space that lies one
     half-width ahead of the center along forward_deg.
 
@@ -30,7 +33,7 @@ def forward_point_in_ref(w, h, forward_deg):
             h / 2 - (w / 2) * math.sin(ang))
 
 
-def _load_ref_meta(image_path):
+def _load_ref_meta(image_path: str) -> dict[str, Any]:
     """Read sidecar JSON next to a reference image (e.g. 7.png → 7.json).
     Returns {"forward_deg": float}. Unknown keys are dropped; missing
     sidecar yields the default."""
@@ -49,7 +52,7 @@ def _load_ref_meta(image_path):
     return meta
 
 
-def _dedup_by_id(results):
+def _dedup_by_id(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Collapse duplicate-id detections to the one with the most inliers.
     Order is not preserved."""
     best = {}
@@ -61,8 +64,8 @@ def _dedup_by_id(results):
 
 
 class ImageRefDetector:
-    def __init__(self, ref_dir, min_inliers=15, ratio=0.75,
-                 max_features=2000, use_flann=False):
+    def __init__(self, ref_dir: str, min_inliers: int = 15, ratio: float = 0.75,
+                 max_features: int = 2000, use_flann: bool = False) -> None:
         self.min_inliers = min_inliers
         self.ratio = ratio
         self.use_flann = use_flann
@@ -97,14 +100,14 @@ class ImageRefDetector:
             print(f"[image_detector] loaded ref id={rid} ({w}x{h}, {len(kp)} kp, "
                   f"forward_deg={meta['forward_deg']})")
 
-    def _build_matcher(self):
+    def _build_matcher(self) -> Any:
         if self.use_flann:
             index_params = dict(algorithm=6, table_number=12,
                                 key_size=20, multi_probe_level=2)
             return cv2.FlannBasedMatcher(index_params, dict(checks=50))
         return cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=False)
 
-    def detect(self, gray):
+    def detect(self, gray: np.ndarray) -> list[dict[str, Any]]:
         results = []
         if not self.refs:
             return results

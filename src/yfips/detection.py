@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import collections
 import json
@@ -6,6 +8,8 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Iterator
+from typing import Any
 
 import cv2
 import numpy as np
@@ -28,27 +32,27 @@ class FrameGrabber:
     the latest frame. Decouples capture latency from processing latency
     so a slow detector doesn't pile up frames."""
 
-    def __init__(self, cap):
+    def __init__(self, cap: Any) -> None:
         self.cap = cap
         self._cv = threading.Condition()
-        self._frame = None
+        self._frame: np.ndarray | None = None
         self._counter = 0
         self._misses = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
-    def start(self):
+    def start(self) -> FrameGrabber:
         self._thread.start()
         return self
 
-    def stop(self):
+    def stop(self) -> None:
         self._stop.set()
         with self._cv:
             self._cv.notify_all()
         self._thread.join(timeout=1.0)
         self.cap.release()
 
-    def _run(self):
+    def _run(self) -> None:
         while not self._stop.is_set():
             ret, frame = self.cap.read()
             with self._cv:
@@ -60,7 +64,8 @@ class FrameGrabber:
                     self._misses = 0
                 self._cv.notify_all()
 
-    def get_new(self, last_counter, timeout=1.0):
+    def get_new(self, last_counter: int, timeout: float = 1.0
+                ) -> tuple[np.ndarray | None, int, int]:
         """Block until a frame newer than last_counter arrives, or timeout.
         Returns (frame, counter, misses). frame is None on timeout."""
         with self._cv:
@@ -79,10 +84,10 @@ class FpsMeter:
     Reports the actual loop interval, not single-frame compute time, so
     capture stalls and dropped frames are visible."""
 
-    def __init__(self, window=30):
-        self._times = collections.deque(maxlen=window)
+    def __init__(self, window: int = 30) -> None:
+        self._times: collections.deque[float] = collections.deque(maxlen=window)
 
-    def tick(self, t):
+    def tick(self, t: float) -> float:
         self._times.append(t)
         if len(self._times) < 2:
             return 0.0
@@ -92,7 +97,7 @@ class FpsMeter:
         return (len(self._times) - 1) / span
 
 
-def open_camera(cam):
+def open_camera(cam: dict[str, Any]) -> Any:
     """Open a cv2.VideoCapture with the given settings dict.
     Raises SystemExit with a clear message if the device fails to open."""
     cap = cv2.VideoCapture(cam["index"])
@@ -107,7 +112,7 @@ def open_camera(cam):
     return cap
 
 
-def camera_settings(cfg, args):
+def camera_settings(cfg: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     """Resolve camera index/width/height/fps with CLI > config > default precedence."""
     cam_cfg = cfg.get("camera", {}) or {}
     return {
@@ -122,13 +127,13 @@ def camera_settings(cfg, args):
 class Publisher:
     _FINITE_FIELDS = ("x", "y", "yaw")
 
-    def __init__(self, udp_cfg):
+    def __init__(self, udp_cfg: dict[str, Any]) -> None:
         self.enabled = udp_cfg.get("enabled", False)
         self.addr = (udp_cfg.get("host", "127.0.0.1"), int(udp_cfg.get("port", 9999)))
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if self.enabled else None
-        self._warned_ids = set()
+        self._warned_ids: set[int | None] = set()
 
-    def send(self, payload):
+    def send(self, payload: dict[str, Any]) -> None:
         if not self.enabled:
             return
         for field in self._FINITE_FIELDS:
@@ -143,29 +148,29 @@ class Publisher:
         self.sock.sendto(json.dumps(payload, allow_nan=False).encode("utf-8"), self.addr)
 
 
-def compute_homography(image_corners_px, world_corners_m):
+def compute_homography(image_corners_px: Any, world_corners_m: Any) -> np.ndarray:
     src = np.array(image_corners_px, dtype=np.float32)
     dst = np.array(world_corners_m, dtype=np.float32)
     H, _ = cv2.findHomography(src, dst)
     return H
 
 
-def image_to_world(H, pt):
+def image_to_world(H: np.ndarray, pt: tuple[float, float]) -> tuple[float, float]:
     p = np.array([pt[0], pt[1], 1.0])
     w = H @ p
     return float(w[0] / w[2]), float(w[1] / w[2])
 
 
 class CalibClicker:
-    def __init__(self, cfg):
+    def __init__(self, cfg: dict[str, Any]) -> None:
         self.cfg = cfg
         existing = cfg.get("image_corners_px")
-        self.points = list(existing) if existing else []
-        self.H = None
+        self.points: list[list[int]] = list(existing) if existing else []
+        self.H: np.ndarray | None = None
         if len(self.points) == 4:
             self.H = compute_homography(self.points, cfg["world_corners_m"])
 
-    def __call__(self, event, x, y, flags, param):
+    def __call__(self, event: int, x: int, y: int, flags: int, param: Any) -> None:
         if event != cv2.EVENT_LBUTTONDBLCLK:
             return
         if len(self.points) >= 4:
@@ -191,7 +196,7 @@ _APRILTAG_KEY_MAP = {
 }
 
 
-def apriltag_options_kwargs(cfg):
+def apriltag_options_kwargs(cfg: dict[str, Any]) -> dict[str, Any]:
     """Translate config.apriltag_mode into kwargs for apriltag.DetectorOptions.
     Unknown keys are dropped; missing block returns {}."""
     at_cfg = cfg.get("apriltag_mode") or {}
@@ -201,7 +206,7 @@ def apriltag_options_kwargs(cfg):
 class AprilTagAdapter:
     """Wraps the apriltag library into the common detection dict shape."""
 
-    def __init__(self, options_kwargs=None):
+    def __init__(self, options_kwargs: dict[str, Any] | None = None) -> None:
         import apriltag  # imported lazily so image-mode users don't need it
         if options_kwargs:
             self.detector = apriltag.Detector(apriltag.DetectorOptions(**options_kwargs))
@@ -209,7 +214,7 @@ class AprilTagAdapter:
             self.detector = apriltag.Detector()
 
     @staticmethod
-    def _adapt(det):
+    def _adapt(det: Any) -> dict[str, Any]:
         # swatbotics corner order: 0 back-left, 1 back-right, 2 front-right, 3 front-left.
         # The right edge (midpoint of c1+c2) sits ahead of center along the tag's +x.
         c = np.asarray(det.corners)
@@ -221,11 +226,11 @@ class AprilTagAdapter:
             "corners": c,
         }
 
-    def detect(self, gray):
+    def detect(self, gray: np.ndarray) -> list[dict[str, Any]]:
         return [self._adapt(det) for det in self.detector.detect(gray)]
 
 
-def build_detector(mode, cfg):
+def build_detector(mode: str, cfg: dict[str, Any]) -> Any:
     if mode == "apriltag":
         return AprilTagAdapter(options_kwargs=apriltag_options_kwargs(cfg))
     if mode == "image":
@@ -241,13 +246,15 @@ def build_detector(mode, cfg):
     raise ValueError(f"unknown mode: {mode}")
 
 
-def yaw_from_forward(H, center_px, forward_px):
+def yaw_from_forward(H: np.ndarray, center_px: tuple[float, float],
+                     forward_px: tuple[float, float]) -> float:
     cw = image_to_world(H, center_px)
     fw = image_to_world(H, forward_px)
     return math.atan2(fw[1] - cw[1], fw[0] - cw[0])
 
 
-def emit_predictions(tracker, detected_ids, t):
+def emit_predictions(tracker: Any, detected_ids: set[int], t: float
+                     ) -> Iterator[tuple[int, float, float, float]]:
     """Yield (rid, x, y, yaw) for tracked ids absent this frame whose
     tracker can extrapolate. Trackers without a velocity model (EMA)
     silently produce nothing."""
@@ -262,7 +269,7 @@ def emit_predictions(tracker, detected_ids, t):
         yield (rid, *out)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["apriltag", "image"], default=None,
                         help="detection mode; overrides config.mode")

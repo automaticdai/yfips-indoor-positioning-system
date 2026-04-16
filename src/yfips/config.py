@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import json
 import os
+from typing import Any
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CONFIG_PATH = os.path.join(_REPO_ROOT, "config.json")
 
-DEFAULTS = {
+DEFAULTS: dict[str, Any] = {
     "camera_matrix": None,
     "dist_coeffs": None,
     "world_corners_m": [[0.0, 0.0], [5.0, 0.0], [5.0, 5.0], [0.0, 5.0]],
@@ -21,7 +24,7 @@ DEFAULTS = {
 }
 
 
-def load():
+def load() -> dict[str, Any]:
     if not os.path.exists(CONFIG_PATH):
         return dict(DEFAULTS)
     with open(CONFIG_PATH) as f:
@@ -31,12 +34,12 @@ def load():
     return merged
 
 
-def save(cfg):
+def save(cfg: dict[str, Any]) -> None:
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
 
 
-def update(**kwargs):
+def update(**kwargs: Any) -> dict[str, Any]:
     cfg = load()
     cfg.update(kwargs)
     save(cfg)
