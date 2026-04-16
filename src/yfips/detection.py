@@ -1,4 +1,5 @@
 import argparse
+import collections
 import json
 import math
 import os
@@ -19,6 +20,25 @@ DEFAULT_CAMERA = {"index": 0, "width": 640, "height": 480, "fps": 60}
 
 
 CAPTURE_FAILURE_LIMIT = 30  # consecutive read() failures before bailing
+
+
+class FpsMeter:
+    """Rolling-window fps meter measured from loop-tick timestamps.
+
+    Reports the actual loop interval, not single-frame compute time, so
+    capture stalls and dropped frames are visible."""
+
+    def __init__(self, window=30):
+        self._times = collections.deque(maxlen=window)
+
+    def tick(self, t):
+        self._times.append(t)
+        if len(self._times) < 2:
+            return 0.0
+        span = self._times[-1] - self._times[0]
+        if span <= 0:
+            return 0.0
+        return (len(self._times) - 1) / span
 
 
 def open_camera(cam):
@@ -223,9 +243,11 @@ def main():
     cv2.namedWindow(WINDOW_NAME)
     cv2.setMouseCallback(WINDOW_NAME, clicker)
 
+    fps_meter = FpsMeter(window=30)
     consecutive_misses = 0
     while True:
         now = time.time()
+        fps = fps_meter.tick(now)
         ret, frame = cap.read()
         if not ret:
             consecutive_misses += 1
@@ -278,7 +300,6 @@ def main():
                 pub.send(payload)
                 ros_pub.send(payload)
 
-        fps = 1.0 / max(time.time() - now, 1e-6)
         cv2.putText(frame, f"{mode} | fps: {fps:.1f}",
                     (0, cam["height"] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
         if clicker.H is None:
