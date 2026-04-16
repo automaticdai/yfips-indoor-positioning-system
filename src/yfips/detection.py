@@ -75,21 +75,21 @@ class AprilTagAdapter:
         import apriltag  # imported lazily so image-mode users don't need it
         self.detector = apriltag.Detector()
 
+    @staticmethod
+    def _adapt(det):
+        # swatbotics corner order: 0 back-left, 1 back-right, 2 front-right, 3 front-left.
+        # The right edge (midpoint of c1+c2) sits ahead of center along the tag's +x.
+        c = np.asarray(det.corners)
+        forward = 0.5 * (c[1] + c[2])
+        return {
+            "id": int(det.tag_id),
+            "center": tuple(det.center),
+            "forward": (float(forward[0]), float(forward[1])),
+            "corners": c,
+        }
+
     def detect(self, gray):
-        out = []
-        for det in self.detector.detect(gray):
-            c = np.asarray(det.corners)
-            # corner0→corner1 defines the tag's local +x
-            forward = 0.5 * (c[1] + c[2])
-            back = 0.5 * (c[0] + c[3])
-            # forward_px should be ahead of center along +x
-            out.append({
-                "id": int(det.tag_id),
-                "center": tuple(det.center),
-                "forward": tuple(forward + (forward - back) * 0.0),  # == forward
-                "corners": c,
-            })
-        return out
+        return [self._adapt(det) for det in self.detector.detect(gray)]
 
 
 def build_detector(mode, cfg):
