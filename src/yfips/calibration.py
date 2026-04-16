@@ -27,6 +27,20 @@ def _make_object_points():
     return pts
 
 
+def apply_intrinsics(cfg, mtx, dist):
+    """Update cfg in place with new intrinsics, dropping any image_corners_px
+    that were collected under the previous calibration. The previously
+    saved homography no longer matches the rectified image, so the user
+    must re-click."""
+    cfg["camera_matrix"] = mtx
+    cfg["dist_coeffs"] = dist
+    if cfg.get("image_corners_px") is not None:
+        print("[calibration] WARNING: image_corners_px cleared — "
+              "re-click 4 world corners after restarting detection")
+        cfg["image_corners_px"] = None
+    return cfg
+
+
 def main():
     images = glob.glob(_IMAGES_GLOB)
     if not images:
@@ -56,8 +70,7 @@ def main():
     print("Distortion coeffs:", dist.ravel())
 
     cfg = config.load()
-    cfg["camera_matrix"] = mtx.tolist()
-    cfg["dist_coeffs"] = dist.ravel().tolist()
+    apply_intrinsics(cfg, mtx=mtx.tolist(), dist=dist.ravel().tolist())
     config.save(cfg)
     print(f"Saved intrinsics to {config.CONFIG_PATH}")
 
