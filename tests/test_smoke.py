@@ -16,3 +16,10 @@ def test_pure_logic_modules_import():
         "yfips.ros_publisher",
     ):
         importlib.import_module(name)
+
+
+def test_calibration_exposes_main_function():
+    # main() guard ensures importing the module does not run the
+    # chessboard pipeline as a side effect.
+    cal = importlib.import_module("yfips.calibration")
+    assert callable(cal.main)

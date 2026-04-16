@@ -1,3 +1,10 @@
+"""Camera intrinsic calibration from a chessboard pattern.
+
+Reads images/calibration_*.jpg at the repo root, runs OpenCV's chessboard
+corner finder + calibrateCamera, and writes the intrinsics into
+config.json.
+"""
+
 import glob
 import os
 
@@ -6,45 +13,56 @@ import numpy as np
 
 from yfips import config
 
-criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+CHESSBOARD = (7, 6)  # inner corners (cols, rows)
 
-objp = np.zeros((6 * 7, 3), np.float32)
-objp[:, :2] = np.mgrid[0:7, 0:6].T.reshape(-1, 2)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_IMAGES_GLOB = os.path.join(_REPO_ROOT, "images", "calibration_*.jpg")
 
-objpoints = []
-imgpoints = []
 
-repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-images = glob.glob(os.path.join(repo_root, "images", "calibration_*.jpg"))
+def _make_object_points():
+    cols, rows = CHESSBOARD
+    pts = np.zeros((rows * cols, 3), np.float32)
+    pts[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2)
+    return pts
 
-if not images:
-    raise SystemExit("No calibration images found at images/calibration_*.jpg")
 
-gray = None
-for fname in images:
-    img = cv.imread(fname)
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    ret, corners = cv.findChessboardCorners(gray, (7, 6), None)
-    if ret:
-        objpoints.append(objp)
-        corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        imgpoints.append(corners2)
-        cv.drawChessboardCorners(img, (7, 6), corners2, ret)
-        cv.imshow("img", img)
-        cv.waitKey(500)
+def main():
+    images = glob.glob(_IMAGES_GLOB)
+    if not images:
+        raise SystemExit(f"No calibration images found at {_IMAGES_GLOB}")
 
-ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(
-    objpoints, imgpoints, gray.shape[::-1], None, None
-)
+    objp = _make_object_points()
+    objpoints, imgpoints = [], []
+    gray = None
+    for fname in images:
+        img = cv.imread(fname)
+        gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+        ret, corners = cv.findChessboardCorners(gray, CHESSBOARD, None)
+        if ret:
+            objpoints.append(objp)
+            corners2 = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), CRITERIA)
+            imgpoints.append(corners2)
+            cv.drawChessboardCorners(img, CHESSBOARD, corners2, ret)
+            cv.imshow("img", img)
+            cv.waitKey(500)
 
-print("RMS reprojection error:", ret)
-print("Camera matrix:\n", mtx)
-print("Distortion coeffs:", dist.ravel())
+    ret, mtx, dist, _, _ = cv.calibrateCamera(
+        objpoints, imgpoints, gray.shape[::-1], None, None
+    )
 
-cfg = config.load()
-cfg["camera_matrix"] = mtx.tolist()
-cfg["dist_coeffs"] = dist.ravel().tolist()
-config.save(cfg)
-print(f"Saved intrinsics to {config.CONFIG_PATH}")
+    print("RMS reprojection error:", ret)
+    print("Camera matrix:\n", mtx)
+    print("Distortion coeffs:", dist.ravel())
 
-cv.destroyAllWindows()
+    cfg = config.load()
+    cfg["camera_matrix"] = mtx.tolist()
+    cfg["dist_coeffs"] = dist.ravel().tolist()
+    config.save(cfg)
+    print(f"Saved intrinsics to {config.CONFIG_PATH}")
+
+    cv.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
