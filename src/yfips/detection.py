@@ -4,6 +4,7 @@ import json
 import math
 import os
 import socket
+import threading
 import time
 
 import cv2
@@ -20,6 +21,56 @@ DEFAULT_CAMERA = {"index": 0, "width": 640, "height": 480, "fps": 60}
 
 
 CAPTURE_FAILURE_LIMIT = 30  # consecutive read() failures before bailing
+
+
+class FrameGrabber:
+    """Background thread that calls cap.read() in a loop and exposes only
+    the latest frame. Decouples capture latency from processing latency
+    so a slow detector doesn't pile up frames."""
+
+    def __init__(self, cap):
+        self.cap = cap
+        self._cv = threading.Condition()
+        self._frame = None
+        self._counter = 0
+        self._misses = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        with self._cv:
+            self._cv.notify_all()
+        self._thread.join(timeout=1.0)
+        self.cap.release()
+
+    def _run(self):
+        while not self._stop.is_set():
+            ret, frame = self.cap.read()
+            with self._cv:
+                if not ret:
+                    self._misses += 1
+                else:
+                    self._frame = frame
+                    self._counter += 1
+                    self._misses = 0
+                self._cv.notify_all()
+
+    def get_new(self, last_counter, timeout=1.0):
+        """Block until a frame newer than last_counter arrives, or timeout.
+        Returns (frame, counter, misses). frame is None on timeout."""
+        with self._cv:
+            self._cv.wait_for(
+                lambda: self._counter > last_counter or self._stop.is_set(),
+                timeout=timeout,
+            )
+            if self._counter <= last_counter:
+                return None, last_counter, self._misses
+            return self._frame, self._counter, self._misses
 
 
 class FpsMeter:
@@ -239,80 +290,81 @@ def main():
         print("[yfips] live undistortion enabled")
 
     cap = open_camera(cam)
+    grabber = FrameGrabber(cap).start()
 
     cv2.namedWindow(WINDOW_NAME)
     cv2.setMouseCallback(WINDOW_NAME, clicker)
 
     fps_meter = FpsMeter(window=30)
-    consecutive_misses = 0
-    while True:
-        now = time.time()
-        fps = fps_meter.tick(now)
-        ret, frame = cap.read()
-        if not ret:
-            consecutive_misses += 1
-            if consecutive_misses >= CAPTURE_FAILURE_LIMIT:
+    last_counter = 0
+    try:
+        while True:
+            frame, counter, misses = grabber.get_new(last_counter, timeout=0.5)
+            if misses >= CAPTURE_FAILURE_LIMIT:
                 print(f"[yfips] camera returned no frame for "
                       f"{CAPTURE_FAILURE_LIMIT} consecutive reads — exiting")
                 break
-            continue
-        consecutive_misses = 0
-        if undistort_maps is not None:
-            frame = cv2.remap(frame, undistort_maps[0], undistort_maps[1],
-                              cv2.INTER_LINEAR)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if frame is None:
+                continue
+            last_counter = counter
+            now = time.time()
+            fps = fps_meter.tick(now)
+            if undistort_maps is not None:
+                frame = cv2.remap(frame, undistort_maps[0], undistort_maps[1],
+                                  cv2.INTER_LINEAR)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        for p in clicker.points:
-            cv2.circle(frame, (int(p[0]), int(p[1])), 4, (255, 0, 0), -1)
+            for p in clicker.points:
+                cv2.circle(frame, (int(p[0]), int(p[1])), 4, (255, 0, 0), -1)
 
-        detections = detector.detect(gray)
-        detected_ids = set()
-        for det in detections:
-            cx, cy = det["center"]
-            for cn in det["corners"]:
-                cv2.circle(frame, (int(cn[0]), int(cn[1])), 3, (0, 0, 255), -1)
-            cv2.circle(frame, (int(cx), int(cy)), 4, (0, 255, 0), -1)
-            fx_, fy_ = det["forward"]
-            cv2.arrowedLine(frame, (int(cx), int(cy)), (int(fx_), int(fy_)),
-                            (0, 255, 255), 1, tipLength=0.3)
+            detections = detector.detect(gray)
+            detected_ids = set()
+            for det in detections:
+                cx, cy = det["center"]
+                for cn in det["corners"]:
+                    cv2.circle(frame, (int(cn[0]), int(cn[1])), 3, (0, 0, 255), -1)
+                cv2.circle(frame, (int(cx), int(cy)), 4, (0, 255, 0), -1)
+                fx_, fy_ = det["forward"]
+                cv2.arrowedLine(frame, (int(cx), int(cy)), (int(fx_), int(fy_)),
+                                (0, 255, 255), 1, tipLength=0.3)
+
+                if clicker.H is not None:
+                    x_w, y_w = image_to_world(clicker.H, det["center"])
+                    yaw = yaw_from_forward(clicker.H, det["center"], det["forward"])
+                    if tracker is not None:
+                        x_w, y_w, yaw = tracker.update(det["id"], x_w, y_w, yaw, now)
+                    detected_ids.add(det["id"])
+                    label = f"id={det['id']} x={x_w:.2f} y={y_w:.2f} yaw={math.degrees(yaw):.0f}"
+                    cv2.putText(frame, label, (int(cx) + 6, int(cy)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                    payload = {"id": det["id"], "x": x_w, "y": y_w,
+                               "yaw": yaw, "t": now}
+                    pub.send(payload)
+                    ros_pub.send(payload)
+                else:
+                    cv2.putText(frame, f"id={det['id']}", (int(cx) + 6, int(cy)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
 
             if clicker.H is not None:
-                x_w, y_w = image_to_world(clicker.H, det["center"])
-                yaw = yaw_from_forward(clicker.H, det["center"], det["forward"])
-                if tracker is not None:
-                    x_w, y_w, yaw = tracker.update(det["id"], x_w, y_w, yaw, now)
-                detected_ids.add(det["id"])
-                label = f"id={det['id']} x={x_w:.2f} y={y_w:.2f} yaw={math.degrees(yaw):.0f}"
-                cv2.putText(frame, label, (int(cx) + 6, int(cy)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-                payload = {"id": det["id"], "x": x_w, "y": y_w,
-                           "yaw": yaw, "t": now}
-                pub.send(payload)
-                ros_pub.send(payload)
-            else:
-                cv2.putText(frame, f"id={det['id']}", (int(cx) + 6, int(cy)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+                for rid, x_w, y_w, yaw in emit_predictions(tracker, detected_ids, now):
+                    payload = {"id": rid, "x": x_w, "y": y_w,
+                               "yaw": yaw, "t": now, "predicted": True}
+                    pub.send(payload)
+                    ros_pub.send(payload)
 
-        if clicker.H is not None:
-            for rid, x_w, y_w, yaw in emit_predictions(tracker, detected_ids, now):
-                payload = {"id": rid, "x": x_w, "y": y_w,
-                           "yaw": yaw, "t": now, "predicted": True}
-                pub.send(payload)
-                ros_pub.send(payload)
+            cv2.putText(frame, f"{mode} | fps: {fps:.1f}",
+                        (0, cam["height"] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
+            if clicker.H is None:
+                cv2.putText(frame, "double-click 4 corners in world_corners_m order",
+                            (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255))
 
-        cv2.putText(frame, f"{mode} | fps: {fps:.1f}",
-                    (0, cam["height"] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
-        if clicker.H is None:
-            cv2.putText(frame, "double-click 4 corners in world_corners_m order",
-                        (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255))
-
-        cv2.imshow(WINDOW_NAME, frame)
-        if cv2.waitKey(1) & 0xFF == 27:
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    ros_pub.shutdown()
+            cv2.imshow(WINDOW_NAME, frame)
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+    finally:
+        grabber.stop()
+        cv2.destroyAllWindows()
+        ros_pub.shutdown()
 
 
 if __name__ == "__main__":
