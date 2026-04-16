@@ -18,6 +18,24 @@ WINDOW_NAME = "YFIPS"
 DEFAULT_CAMERA = {"index": 0, "width": 640, "height": 480, "fps": 60}
 
 
+CAPTURE_FAILURE_LIMIT = 30  # consecutive read() failures before bailing
+
+
+def open_camera(cam):
+    """Open a cv2.VideoCapture with the given settings dict.
+    Raises SystemExit with a clear message if the device fails to open."""
+    cap = cv2.VideoCapture(cam["index"])
+    if not cap.isOpened():
+        raise SystemExit(
+            f"[yfips] failed to open camera at index {cam['index']} — "
+            "check the device, change config.camera.index, or pass --camera-index"
+        )
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam["width"])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam["height"])
+    cap.set(cv2.CAP_PROP_FPS, cam["fps"])
+    return cap
+
+
 def camera_settings(cfg, args):
     """Resolve camera index/width/height/fps with CLI > config > default precedence."""
     cam_cfg = cfg.get("camera", {}) or {}
@@ -200,19 +218,23 @@ def main():
         undistort_maps = cv2.initUndistortRectifyMap(K, D, None, new_K, size, cv2.CV_16SC2)
         print("[yfips] live undistortion enabled")
 
-    cap = cv2.VideoCapture(cam["index"])
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam["width"])
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam["height"])
-    cap.set(cv2.CAP_PROP_FPS, cam["fps"])
+    cap = open_camera(cam)
 
     cv2.namedWindow(WINDOW_NAME)
     cv2.setMouseCallback(WINDOW_NAME, clicker)
 
+    consecutive_misses = 0
     while True:
         now = time.time()
         ret, frame = cap.read()
         if not ret:
-            break
+            consecutive_misses += 1
+            if consecutive_misses >= CAPTURE_FAILURE_LIMIT:
+                print(f"[yfips] camera returned no frame for "
+                      f"{CAPTURE_FAILURE_LIMIT} consecutive reads — exiting")
+                break
+            continue
+        consecutive_misses = 0
         if undistort_maps is not None:
             frame = cv2.remap(frame, undistort_maps[0], undistort_maps[1],
                               cv2.INTER_LINEAR)
