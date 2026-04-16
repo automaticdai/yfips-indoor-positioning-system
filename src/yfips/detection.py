@@ -20,15 +20,27 @@ WINDOW_NAME = "YFIPS"
 
 
 class Publisher:
+    _FINITE_FIELDS = ("x", "y", "yaw")
+
     def __init__(self, udp_cfg):
         self.enabled = udp_cfg.get("enabled", False)
         self.addr = (udp_cfg.get("host", "127.0.0.1"), int(udp_cfg.get("port", 9999)))
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) if self.enabled else None
+        self._warned_ids = set()
 
     def send(self, payload):
         if not self.enabled:
             return
-        self.sock.sendto(json.dumps(payload).encode("utf-8"), self.addr)
+        for field in self._FINITE_FIELDS:
+            v = payload.get(field)
+            if v is None or not math.isfinite(v):
+                rid = payload.get("id")
+                if rid not in self._warned_ids:
+                    print(f"[publisher] dropping non-finite {field}={v!r} for id={rid}")
+                    self._warned_ids.add(rid)
+                return
+        # allow_nan=False is a defensive backstop in case a non-numeric sneaks in.
+        self.sock.sendto(json.dumps(payload, allow_nan=False).encode("utf-8"), self.addr)
 
 
 def compute_homography(image_corners_px, world_corners_m):
