@@ -180,12 +180,33 @@ class CalibClicker:
             print("Homography computed and saved.")
 
 
+_APRILTAG_KEY_MAP = {
+    "family": "families",
+    "nthreads": "nthreads",
+    "quad_decimate": "quad_decimate",
+    "quad_blur": "quad_blur",
+    "refine_edges": "refine_edges",
+    "refine_decode": "refine_decode",
+    "refine_pose": "refine_pose",
+}
+
+
+def apriltag_options_kwargs(cfg):
+    """Translate config.apriltag_mode into kwargs for apriltag.DetectorOptions.
+    Unknown keys are dropped; missing block returns {}."""
+    at_cfg = cfg.get("apriltag_mode") or {}
+    return {dst: at_cfg[src] for src, dst in _APRILTAG_KEY_MAP.items() if src in at_cfg}
+
+
 class AprilTagAdapter:
     """Wraps the apriltag library into the common detection dict shape."""
 
-    def __init__(self):
+    def __init__(self, options_kwargs=None):
         import apriltag  # imported lazily so image-mode users don't need it
-        self.detector = apriltag.Detector()
+        if options_kwargs:
+            self.detector = apriltag.Detector(apriltag.DetectorOptions(**options_kwargs))
+        else:
+            self.detector = apriltag.Detector()
 
     @staticmethod
     def _adapt(det):
@@ -206,7 +227,7 @@ class AprilTagAdapter:
 
 def build_detector(mode, cfg):
     if mode == "apriltag":
-        return AprilTagAdapter()
+        return AprilTagAdapter(options_kwargs=apriltag_options_kwargs(cfg))
     if mode == "image":
         ref_dir = cfg.get("references_dir") or os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),

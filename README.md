@@ -57,6 +57,19 @@ Run `uv run python -m yfips.detection` and **double-click the 4 world corners** 
 ### 6.1 AprilTag mode (default)
 Print AprilTags (any supported family), mount one per robot with the tag id corresponding to the robot id. Position is recovered via the world-plane homography (no PnP), so the printed side length doesn't affect localization — but keep tags large enough to detect reliably (≥5 cm for a 1080p camera at ~3 m height).
 
+Tunables under `apriltag_mode` in `config.json` map onto `apriltag.DetectorOptions`:
+
+```json
+"apriltag_mode": {
+  "family": "tag36h11",
+  "nthreads": 4,
+  "quad_decimate": 1.0,
+  "refine_edges": true
+}
+```
+
+`quad_decimate > 1.0` trades detection range for speed (downsamples before quad detection). `nthreads` parallelizes across cores.
+
 ### 6.2 Reference-image mode
 Create a `references/` directory at the repo root and drop one image per robot:
 
