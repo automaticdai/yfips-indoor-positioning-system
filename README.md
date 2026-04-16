@@ -89,6 +89,14 @@ Tunables under `image_mode` in `config.json`:
 - `min_inliers` — RANSAC inlier threshold (default 15). Raise for robustness, lower for faint matches.
 - `use_flann` — use FLANN-LSH instead of brute-force matcher (default `false`). Faster with many references.
 
+Optional **sidecar JSON** per reference declares which way is forward in the reference image. Drop `references/<id>.json` next to the image:
+
+```json
+{ "forward_deg": 90 }
+```
+
+`forward_deg` is measured CCW from the image's +x axis (math convention; 0 = right, 90 = up, 180 = left, 270 = down). Default `0` matches pre-1.0 behavior (forward = right edge).
+
 ## 7. Live visualizer
 
 A second terminal can subscribe to the UDP stream and show each robot as an arrow on the world plane:

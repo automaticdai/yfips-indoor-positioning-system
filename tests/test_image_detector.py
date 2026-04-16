@@ -1,9 +1,16 @@
 """End-to-end tests for ImageRefDetector against synthetic ORB-textured scenes."""
 
+import math
+
 import cv2
 import numpy as np
 
-from yfips.image_detector import ImageRefDetector, _dedup_by_id
+from yfips.image_detector import (
+    ImageRefDetector,
+    _dedup_by_id,
+    _load_ref_meta,
+    forward_point_in_ref,
+)
 
 
 def _textured(seed, size=(160, 160)):
@@ -71,6 +78,51 @@ def test_dedup_by_id_preserves_singletons():
 
 def test_dedup_by_id_empty():
     assert _dedup_by_id([]) == []
+
+
+def test_forward_point_default_is_right_edge():
+    fx, fy = forward_point_in_ref(w=100, h=80, forward_deg=0)
+    assert math.isclose(fx, 100)
+    assert math.isclose(fy, 40)
+
+
+def test_forward_point_at_90_points_up_in_image():
+    # Image y grows down; "up" should give a y smaller than center.
+    fx, fy = forward_point_in_ref(w=100, h=80, forward_deg=90)
+    assert math.isclose(fx, 50)
+    assert math.isclose(fy, -10)
+
+
+def test_forward_point_at_180_is_left():
+    fx, fy = forward_point_in_ref(w=100, h=80, forward_deg=180)
+    assert math.isclose(fx, 0)
+    assert math.isclose(fy, 40)
+
+
+def test_forward_point_at_270_is_below():
+    fx, fy = forward_point_in_ref(w=100, h=80, forward_deg=270)
+    assert math.isclose(fx, 50)
+    assert math.isclose(fy, 90)
+
+
+def test_load_ref_meta_returns_default_when_no_sidecar(tmp_path):
+    img = tmp_path / "7.png"
+    img.write_bytes(b"")
+    assert _load_ref_meta(str(img)) == {"forward_deg": 0.0}
+
+
+def test_load_ref_meta_reads_sidecar(tmp_path):
+    img = tmp_path / "7.png"
+    img.write_bytes(b"")
+    (tmp_path / "7.json").write_text('{"forward_deg": 90}')
+    assert _load_ref_meta(str(img)) == {"forward_deg": 90.0}
+
+
+def test_load_ref_meta_ignores_unknown_keys(tmp_path):
+    img = tmp_path / "7.png"
+    img.write_bytes(b"")
+    (tmp_path / "7.json").write_text('{"forward_deg": 45, "foo": "bar"}')
+    assert _load_ref_meta(str(img)) == {"forward_deg": 45.0}
 
 
 def test_detector_emits_expected_dict_shape(tmp_path):

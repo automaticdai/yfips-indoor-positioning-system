@@ -10,10 +10,43 @@ index every frame, which was the dominant cost when scaling past a few
 references."""
 
 import glob
+import json
+import math
 import os
 
 import cv2
 import numpy as np
+
+
+def forward_point_in_ref(w, h, forward_deg):
+    """Return the (x, y) pixel in reference image space that lies one
+    half-width ahead of the center along forward_deg.
+
+    forward_deg is measured CCW from image +x axis under the math
+    convention (y up). 0 → right, 90 → up in the image (smaller y),
+    180 → left, 270 → down (larger y)."""
+    ang = math.radians(forward_deg)
+    return (w / 2 + (w / 2) * math.cos(ang),
+            h / 2 - (w / 2) * math.sin(ang))
+
+
+def _load_ref_meta(image_path):
+    """Read sidecar JSON next to a reference image (e.g. 7.png → 7.json).
+    Returns {"forward_deg": float}. Unknown keys are dropped; missing
+    sidecar yields the default."""
+    meta = {"forward_deg": 0.0}
+    sidecar = os.path.splitext(image_path)[0] + ".json"
+    if not os.path.isfile(sidecar):
+        return meta
+    try:
+        with open(sidecar) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[image_detector] WARN: could not read {sidecar}: {e}")
+        return meta
+    if "forward_deg" in data:
+        meta["forward_deg"] = float(data["forward_deg"])
+    return meta
 
 
 def _dedup_by_id(results):
@@ -59,8 +92,10 @@ class ImageRefDetector:
             matcher = self._build_matcher()
             matcher.add([des])
             matcher.train()
-            self.refs.append((rid, kp, matcher, (w, h)))
-            print(f"[image_detector] loaded ref id={rid} ({w}x{h}, {len(kp)} kp)")
+            meta = _load_ref_meta(path)
+            self.refs.append((rid, kp, matcher, (w, h), meta))
+            print(f"[image_detector] loaded ref id={rid} ({w}x{h}, {len(kp)} kp, "
+                  f"forward_deg={meta['forward_deg']})")
 
     def _build_matcher(self):
         if self.use_flann:
@@ -77,7 +112,7 @@ class ImageRefDetector:
         if des2 is None or len(kp2) < self.min_inliers:
             return results
 
-        for rid, kp1, matcher, (w, h) in self.refs:
+        for rid, kp1, matcher, (w, h), meta in self.refs:
             # Scene is the query side; ref descriptors are pre-trained.
             # m.queryIdx -> scene kp, m.trainIdx -> ref kp.
             knn = matcher.knnMatch(des2, k=2)
@@ -92,7 +127,8 @@ class ImageRefDetector:
             if H is None or inliers < self.min_inliers:
                 continue
 
-            pts_ref = np.array([[[w / 2, h / 2]], [[w, h / 2]]], dtype=np.float32)
+            fx_ref, fy_ref = forward_point_in_ref(w, h, meta["forward_deg"])
+            pts_ref = np.array([[[w / 2, h / 2]], [[fx_ref, fy_ref]]], dtype=np.float32)
             pts_scene = cv2.perspectiveTransform(pts_ref, H)
             center = tuple(pts_scene[0, 0])
             forward = tuple(pts_scene[1, 0])
