@@ -14,9 +14,20 @@ from yfips.kalman_tracker import KalmanTracker
 from yfips.ros_publisher import RosPublisher
 from yfips.tracker import EMATracker
 
-IMAGE_WIDTH = 640
-IMAGE_HEIGHT = 480
 WINDOW_NAME = "YFIPS"
+DEFAULT_CAMERA = {"index": 0, "width": 640, "height": 480, "fps": 60}
+
+
+def camera_settings(cfg, args):
+    """Resolve camera index/width/height/fps with CLI > config > default precedence."""
+    cam_cfg = cfg.get("camera", {}) or {}
+    return {
+        "index": args.camera_index if args.camera_index is not None
+                 else cam_cfg.get("index", DEFAULT_CAMERA["index"]),
+        "width": args.width or cam_cfg.get("width", DEFAULT_CAMERA["width"]),
+        "height": args.height or cam_cfg.get("height", DEFAULT_CAMERA["height"]),
+        "fps": args.fps or cam_cfg.get("fps", DEFAULT_CAMERA["fps"]),
+    }
 
 
 class Publisher:
@@ -145,11 +156,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["apriltag", "image"], default=None,
                         help="detection mode; overrides config.mode")
+    parser.add_argument("--camera-index", type=int, default=None,
+                        help="camera index; overrides config.camera.index")
+    parser.add_argument("--width", type=int, default=None,
+                        help="frame width; overrides config.camera.width")
+    parser.add_argument("--height", type=int, default=None,
+                        help="frame height; overrides config.camera.height")
+    parser.add_argument("--fps", type=int, default=None,
+                        help="capture fps; overrides config.camera.fps")
     args = parser.parse_args()
 
     cfg = config.load()
     mode = args.mode or cfg.get("mode", "apriltag")
-    print(f"[yfips] mode={mode}")
+    cam = camera_settings(cfg, args)
+    print(f"[yfips] mode={mode} camera={cam}")
 
     pub = Publisher(cfg["udp"])
     ros_pub = RosPublisher(cfg.get("ros", {}))
@@ -175,15 +195,15 @@ def main():
     if cfg.get("undistort", True) and cfg.get("camera_matrix") and cfg.get("dist_coeffs"):
         K = np.array(cfg["camera_matrix"], dtype=np.float32)
         D = np.array(cfg["dist_coeffs"], dtype=np.float32)
-        size = (IMAGE_WIDTH, IMAGE_HEIGHT)
+        size = (cam["width"], cam["height"])
         new_K, _ = cv2.getOptimalNewCameraMatrix(K, D, size, alpha=0.0, newImgSize=size)
         undistort_maps = cv2.initUndistortRectifyMap(K, D, None, new_K, size, cv2.CV_16SC2)
         print("[yfips] live undistortion enabled")
 
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, IMAGE_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, IMAGE_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS, 60)
+    cap = cv2.VideoCapture(cam["index"])
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam["width"])
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam["height"])
+    cap.set(cv2.CAP_PROP_FPS, cam["fps"])
 
     cv2.namedWindow(WINDOW_NAME)
     cv2.setMouseCallback(WINDOW_NAME, clicker)
@@ -238,7 +258,7 @@ def main():
 
         fps = 1.0 / max(time.time() - now, 1e-6)
         cv2.putText(frame, f"{mode} | fps: {fps:.1f}",
-                    (0, IMAGE_HEIGHT - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
+                    (0, cam["height"] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255))
         if clicker.H is None:
             cv2.putText(frame, "double-click 4 corners in world_corners_m order",
                         (0, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255))

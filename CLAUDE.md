@@ -51,7 +51,7 @@ while True: print(s.recvfrom(4096)[0].decode())"
 
 - `apriltag` package name on PyPI varies by platform (swatbotics binding).
 - Running `yfips.calibration` auto-clears any previously-saved `image_corners_px`, because the old pixel coordinates refer to an image rectified with the old intrinsics. Re-click the 4 world corners after calibration.
-- `detection.py` hardcodes camera index 0 and 640×480@60 fps.
+- Camera index, resolution and fps default to 0 / 640×480 / 60 fps but live in `config.json`'s `camera` block; CLI flags `--camera-index --width --height --fps` override at runtime.
 - Image mode cost scales linearly with number of references; for ≳50 robots swap BFMatcher for FLANN.
 - World positioning assumes robots move on a **plane**; tall tags/robots get parallax error even after undistortion.
 - `ros` mode requires a ROS 2 install (Humble+) with `rclpy` on PYTHONPATH; otherwise it no-ops with a warning.

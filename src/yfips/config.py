@@ -9,6 +9,7 @@ DEFAULTS = {
     "dist_coeffs": None,
     "world_corners_m": [[0.0, 0.0], [5.0, 0.0], [5.0, 5.0], [0.0, 5.0]],
     "image_corners_px": None,
+    "camera": {"index": 0, "width": 640, "height": 480, "fps": 60},
     "udp": {"host": "127.0.0.1", "port": 9999, "enabled": True},
     "mode": "apriltag",
     "references_dir": None,
