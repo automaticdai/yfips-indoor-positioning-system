@@ -107,7 +107,7 @@ uv run python src/gui.py
 - `ros` — optional ROS 2 publisher: `{ "enabled": false, "topic": "/yfips/detections" }`. Requires `rclpy`; otherwise gracefully disables itself.
 
 ## 9. Credits
-- Built on [OpenCV](https://opencv.org/) and [Qt](https://www.qt.io/) (PySide2).
+- Built on [OpenCV](https://opencv.org/).
 - AprilTag detection via the swatbotics binding: https://github.com/swatbotics/apriltag
 
 ## 10. Contributors

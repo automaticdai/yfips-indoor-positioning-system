@@ -49,7 +49,6 @@ while True: print(s.recvfrom(4096)[0].decode())"
 ## Gotchas
 
 - `apriltag` package name on PyPI varies by platform (swatbotics binding).
-- `pyside2` wheels don't exist for Python ≥3.11; if `uv sync` fails on PySide2, constrain `requires-python` in `pyproject.toml` or swap to `pyside6`.
 - `detection.py` hardcodes camera index 0 and 640×480@60 fps.
 - Image mode cost scales linearly with number of references; for ≳50 robots swap BFMatcher for FLANN.
 - World positioning assumes robots move on a **plane**; tall tags/robots get parallax error even after undistortion.
